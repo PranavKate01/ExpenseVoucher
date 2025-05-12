@@ -1,0 +1,30 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/config.2.0.schema.json",
+  "version": "2.0",
+  "bundles": {
+    "expense-voucher-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/expenseVoucher/ExpenseVoucherWebPart.js",
+          "manifest": "./src/webparts/expenseVoucher/ExpenseVoucherWebPart.manifest.json"
+        }
+      ]
+    },
+    
+    "expense-voucher-1-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/expenseVoucher1/ExpenseVoucher1WebPart.js",
+          "manifest": "./src/webparts/expenseVoucher1/ExpenseVoucher1WebPart.manifest.json"
+        }
+      ]
+    }
+  },
+  "externals": {},
+  "localizedResources": {
+    "ExpenseVoucherWebPartStrings": "lib/webparts/expenseVoucher/loc/{locale}.js",
+    "PropertyControlStrings": "node_modules/@pnp/spfx-property-controls/lib/loc/{locale}.js",
+    "ControlStrings": "node_modules/@pnp/spfx-controls-react/lib/loc/{locale}.js",
+    "ExpenseVoucher1WebPartStrings": "lib/webparts/expenseVoucher1/loc/{locale}.js"
+  }
+}
