@@ -4,39 +4,66 @@ import MyRequests from './Employee/MyRequests';
 import ManagerDashboard from './Manager/ManagerDashboard';
 import AccountsDashboard from './Accounts/AccountsDashboard';
 import HomeScreen from './HomeScreen';
+import { spfi } from '@pnp/sp';
+import { SPFx } from '@pnp/sp/presets/all';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 interface IExpenseVoucherProps {
-  context: any; // Define context as a prop here
+  context: any; // SPFx context
+  
 }
 
-const ExpenseVoucher: React.FC<IExpenseVoucherProps> = ({ context }) => {
-  const [screen, setScreen] = React.useState("home"); // Keeps track of the current screen
+const ExpenseVoucher: React.FC<IExpenseVoucherProps> = ({ context   }) => {
+  const [screen, setScreen] = React.useState("home");
 
-  // Function to navigate back to home
-  const goBackToHome = () => setScreen("home");
+  // ✅ NEW: Store edited item ID (null when not editing)
+  const [editItemId, setEditItemId] = React.useState<number | null>(null);
 
-  // Function to navigate to specific screens
-  const handleNavigation = (screenName: string) => setScreen(screenName);
+  // Create PnP SPFI instance
+  const [sp] = React.useState(() => spfi().using(SPFx(context)));
+
+  const goBackToHome = () => {
+    setScreen("home");
+    setEditItemId(null); // Reset edit ID
+  };
+
+  const handleNavigation = (screenName: string) => {
+    setScreen(screenName);
+  };
 
   return (
     <div>
-      
-      {screen === "home" && <HomeScreen onNavigate={handleNavigation} context={context} />}
+      {screen === "home" && (
+        <HomeScreen onNavigate={handleNavigation} context={context} />
+      )}
 
       {screen === "employee" && (
-      <EmployeeForm
-    context={context}
-    onBack={goBackToHome}
-    goToMyRequests={() => handleNavigation("MyRequests")}
-  />
-)}
-      
-      {screen === "MyRequests" && <MyRequests context={context} onBack={goBackToHome} />}
+        <EmployeeForm
+          context={context}
+          onBack={goBackToHome}
+          goToMyRequests={() => setScreen("MyRequests")}
+          editItemId={editItemId} // ✅ Pass edit item ID
+        />
+      )}
 
-      {screen === "manager" && <ManagerDashboard context={context} onBack={goBackToHome} />}
+      {screen === "MyRequests" && (
+        <MyRequests
+          sp={sp}
+          onBack={goBackToHome}
+          onEdit={(itemId: number) => {
+            setEditItemId(itemId);      // ✅ Set item to edit
+            setScreen("employee");      // ✅ Go to form to edit
+          }}
+        />
+      )}
 
-      {screen === "accounts" && <AccountsDashboard onBack={goBackToHome} />}
+      {screen === "manager" && (
+        <ManagerDashboard context={context} onBack={goBackToHome} />
+      )}
+
+      {screen === "accounts" && (
+        <AccountsDashboard context={context}onBack={goBackToHome} />
+      )}
     </div>
   );
 };

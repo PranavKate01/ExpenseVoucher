@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { spfi, SPFx } from '@pnp/sp';
 import "@pnp/sp/items";
 import "@pnp/sp/lists";
@@ -20,71 +20,93 @@ interface RequestItem {
   Status: string;
   ManagerComment?: string;
   RmName?: { EMail: string };
+  IsProjectRelated?: string;
+  Project?: { Title: string };
+  Currency?: string;
+  EmployeeComment?: string;
+  ExpenseItems?: string;
 }
+
+const STATUS_MAP = {
+  Approve: "Pending with Account",
+  Recycle: "Recycle",
+  Reject: "Rejected"
+};
 
 const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ onBack, context }) => {
   const [requests, setRequests] = useState<RequestItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [comments, setComments] = useState<{ [id: number]: string }>({});
+  const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
+  const [managerComment, setManagerComment] = useState("");
 
   const sp = spfi().using(SPFx(context));
 
-  useEffect(() => {
-    const fetchRequests = async () => {
-      try {
-        const currentUserEmail = context.pageContext.user.email.toLowerCase();
-        const items: RequestItem[] = await sp.web.lists
-          .getByTitle("ExpenseTransaction")
-          .items
-          .select("Id", "EmployeeName/Title", "Department", "Date", "TotalAmount", "Status", "ManagerComment", "RmName/EMail")
-          .expand("EmployeeName", "RmName")();
+  const fetchRequests = useCallback(async () => {
+    try {
+      const currentUserEmail = context.pageContext.user.email?.toLowerCase();
+      const items: RequestItem[] = await sp.web.lists
+        .getByTitle("ExpenseTransaction")
+        .items
+        .select(
+          "Id",
+          "EmployeeName/Title",
+          "Department",
+          "Date",
+          "TotalAmount",
+          "Status",
+          "ManagerComment",
+          "RmName/EMail",
+          "IsProjectRelated",
+          "Project/Title",
+          "Currency",
+          "EmployeeComment",
+          "ExpenseItems"
+        )
+        .expand("EmployeeName", "RmName", "Project")();
 
-        const filtered = items.filter(item =>
-          item.RmName?.EMail?.toLowerCase() === currentUserEmail &&
-          item.Status === "Pending with Manager"
-        );
+      const filtered = items.filter(item =>
+        item?.RmName?.EMail?.toLowerCase() === currentUserEmail &&
+        item.Status === "Pending with Manager"
+      );
 
-        setRequests(filtered);
-      } catch (error) {
-        console.error("Error loading manager data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchRequests();
-  }, []);
-
-  const handleAction = async (id: number, action: "Approve" | "Recycle" | "Reject") => {
-    let newStatus = "";
-    switch (action) {
-      case "Approve":
-        newStatus = "Pending with Account";
-        break;
-      case "Recycle":
-        newStatus = "Recycle";
-        break;
-      case "Reject":
-        newStatus = "Rejected";
-        break;
+      setRequests(filtered);
+    } catch (error) {
+      console.error("Error loading manager data:", error);
+    } finally {
+      setLoading(false);
     }
+  }, [context, sp]);
 
-    const comment = comments[id] || "";
+  useEffect(() => {
+    fetchRequests();
+  }, [fetchRequests]);
+
+  const handleAction = async (action: keyof typeof STATUS_MAP) => {
+    if (!selectedRequest) return;
+
+    const newStatus = STATUS_MAP[action];
 
     try {
-      await sp.web.lists.getByTitle("ExpenseTransaction").items.getById(id).update({
+      await sp.web.lists.getByTitle("ExpenseTransaction").items.getById(selectedRequest.Id).update({
         Status: newStatus,
-        ManagerComment: comment
+        ManagerComment: managerComment
       });
 
-      setRequests(prev => prev.filter(req => req.Id !== id));
+      setRequests(prev => prev.filter(req => req.Id !== selectedRequest.Id));
+      setSelectedRequest(null);
+      setManagerComment("");
     } catch (error) {
-      console.error(`Error updating item ${id}:`, error);
+      console.error(`Error updating item ${selectedRequest.Id}:`, error);
     }
   };
 
-  const handleCommentChange = (id: number, value: string) => {
-    setComments(prev => ({ ...prev, [id]: value }));
+  const parseExpenseItems = (itemsJson: string | undefined) => {
+    try {
+      const items = JSON.parse(itemsJson || '[]');
+      return Array.isArray(items) ? items : [];
+    } catch {
+      return "error";
+    }
   };
 
   return (
@@ -93,59 +115,126 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ onBack, context }) 
         <i className="bi bi-speedometer2 me-2"></i>Manager Dashboard
       </h2>
 
-      {loading ? (
-        <div className="text-muted">Loading requests...</div>
-      ) : requests.length > 0 ? (
-        <div className="table-responsive shadow-sm rounded">
-          <table className="table table-hover align-middle border">
-            <thead className="table-primary">
-              <tr>
-                <th>Employee</th>
-                <th>Department</th>
-                <th>Date</th>
-                <th>Total</th>
-                <th>Comment</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {requests.map(req => (
-                <tr key={req.Id}>
-                  <td>
-                    <i className="bi bi-person-circle me-1 text-secondary"></i>
-                    {req.EmployeeName?.Title}
-                  </td>
-                  <td><span className="badge bg-info text-dark">{req.Department}</span></td>
-                  <td>{new Date(req.Date).toLocaleDateString()}</td>
-                  <td>₹ {req.TotalAmount.toFixed(2)}</td>
-                  <td style={{ maxWidth: 200 }}>
-                    <textarea
-                      className="form-control form-control-sm"
-                      placeholder="Add a comment..."
-                      value={comments[req.Id] || ""}
-                      onChange={(e) => handleCommentChange(req.Id, e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <div className="d-flex flex-column gap-1">
-                      <button className="btn btn-sm btn-success" onClick={() => handleAction(req.Id, "Approve")}>
-                        <i className="bi bi-check-circle me-1"></i>Approve
-                      </button>
-                      <button className="btn btn-sm btn-warning" onClick={() => handleAction(req.Id, "Recycle")}>
-                        <i className="bi bi-arrow-repeat me-1"></i>Recycle
-                      </button>
-                      <button className="btn btn-sm btn-danger" onClick={() => handleAction(req.Id, "Reject")}>
-                        <i className="bi bi-x-circle me-1"></i>Reject
-                      </button>
-                    </div>
-                  </td>
+      {!selectedRequest && (
+        loading ? (
+          <div className="text-muted">Loading requests...</div>
+        ) : requests.length > 0 ? (
+          <div className="table-responsive shadow-sm rounded">
+            <table className="table table-hover align-middle border">
+              <thead className="table-primary">
+                <tr>
+                  <th>Employee</th>
+                  <th>Department</th>
+                  <th>Date</th>
+                  <th>Total</th>
+                  <th>View</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {requests.map(req => (
+                  <tr key={req.Id}>
+                    <td>{req.EmployeeName?.Title}</td>
+                    <td><span className="badge bg-info text-dark">{req.Department}</span></td>
+                    <td>{new Date(req.Date).toLocaleDateString()}</td>
+                    <td>{req.Currency || "₹"} {req.TotalAmount.toFixed(2)}</td>
+                    <td>
+                      <button className="btn btn-sm btn-outline-primary" onClick={() => setSelectedRequest(req)}>
+                        <i className="bi bi-eye-fill"></i>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="alert alert-info mt-3">🎉 No pending requests for your approval.</div>
+        )
+      )}
+
+      {selectedRequest && (
+        <div className="modal d-block" tabIndex={-1} role="dialog" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <div className="modal-dialog modal-lg" role="document">
+            <div className="modal-content shadow-lg">
+              <div className="modal-header">
+                <h5 className="modal-title">Request Details</h5>
+                <button type="button" className="btn-close" onClick={() => setSelectedRequest(null)}></button>
+              </div>
+              <div className="modal-body">
+                <p><strong>Employee:</strong> {selectedRequest.EmployeeName?.Title}</p>
+                <p><strong>Department:</strong> {selectedRequest.Department}</p>
+                <p><strong>Date:</strong> {new Date(selectedRequest.Date).toLocaleDateString()}</p>
+                <p><strong>Total Amount:</strong> {selectedRequest.Currency || "₹"} {selectedRequest.TotalAmount.toFixed(2)}</p>
+                <p><strong>Status:</strong> {selectedRequest.Status}</p>
+                <p><strong>Currency:</strong> {selectedRequest.Currency}</p>
+                <p><strong>Is Project Related:</strong> {selectedRequest.IsProjectRelated}</p>
+                <p><strong>Project:</strong> {selectedRequest.Project?.Title || 'N/A'}</p>
+                <p><strong>Employee Comment:</strong><br /> {selectedRequest.EmployeeComment}</p>
+
+                <div className="mt-3">
+                  <strong>Expense Items:</strong>
+                  <div className="table-responsive mt-2">
+                    <table className="table table-bordered table-sm">
+                      <thead className="table-light">
+                        <tr>
+                          <th>Head</th>
+                          <th>Description</th>
+                          <th>Date</th>
+                          <th>Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {
+                          (() => {
+                            const parsed = parseExpenseItems(selectedRequest.ExpenseItems);
+                            if (parsed === "error") {
+                              return <tr><td colSpan={4}>❌ Error parsing JSON</td></tr>;
+                            } else if (parsed.length === 0) {
+                              return <tr><td colSpan={4}>No items found</td></tr>;
+                            } else {
+                              return parsed.map((item: any, index: number) => (
+                                <tr key={index}>
+                                  <td>{item.head}</td>
+                                  <td>{item.description}</td>
+                                  <td>{new Date(item.date).toLocaleDateString()}</td>
+                                  <td>{selectedRequest.Currency || "₹"} {item.amount}</td>
+                                </tr>
+                              ));
+                            }
+                          })()
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="mb-3 mt-3">
+                  <label className="form-label fw-semibold">Manager Comment:</label>
+                  <textarea
+                    className="form-control"
+                    value={managerComment}
+                    onChange={(e) => setManagerComment(e.target.value)}
+                    placeholder="Write your comment here..."
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-success" onClick={() => handleAction("Approve")}>
+                  <i className="bi bi-check-circle me-1"></i>Approve
+                </button>
+                <button className="btn btn-warning" onClick={() => handleAction("Recycle")}>
+                  <i className="bi bi-arrow-repeat me-1"></i>Recycle
+                </button>
+                <button className="btn btn-danger" onClick={() => handleAction("Reject")}>
+                  <i className="bi bi-x-circle me-1"></i>Reject
+                </button>
+                <button className="btn btn-outline-secondary" onClick={() => setSelectedRequest(null)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-      ) : (
-        <div className="alert alert-info mt-3">🎉 No pending requests for your approval.</div>
       )}
 
       <div className="mt-4">
@@ -158,4 +247,3 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ onBack, context }) 
 };
 
 export default ManagerDashboard;
-

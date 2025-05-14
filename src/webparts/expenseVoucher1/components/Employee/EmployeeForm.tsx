@@ -2,10 +2,10 @@ import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { SPFI, spfi } from '@pnp/sp';
 import { SPFx } from '@pnp/sp/presets/all';
-import "@pnp/sp/webs";
-import "@pnp/sp/lists";
-import "@pnp/sp/items";
-import "@pnp/sp/site-users";
+import '@pnp/sp/webs';
+import '@pnp/sp/lists';
+import '@pnp/sp/items';
+import '@pnp/sp/site-users';
 import { MSGraphClientV3 } from '@microsoft/sp-http';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
@@ -13,9 +13,10 @@ interface IExpenseVoucherProps {
   context: any;
   onBack: () => void;
   goToMyRequests: () => void;
+  editItemId: number | null; // Edit item ID
 }
 
-const ExpenseVoucher: React.FC<IExpenseVoucherProps> = ({ context, onBack, goToMyRequests }) => {
+const EmployeeForm: React.FC<IExpenseVoucherProps> = ({ context, onBack, goToMyRequests, editItemId }) => {
   const [sp, setSp] = useState<SPFI>();
   const [employeeInfo, setEmployeeInfo] = useState<{ Id: number; Title: string }>({ Id: 0, Title: '' });
   const [rmInfo, setRmInfo] = useState<{ Id: number; Title: string }>({ Id: 0, Title: '' });
@@ -36,8 +37,12 @@ const ExpenseVoucher: React.FC<IExpenseVoucherProps> = ({ context, onBack, goToM
     const spInstance = spfi().using(SPFx(context));
     setSp(spInstance);
     loadInitialData(spInstance);
-  }, []);
+    if (editItemId) {
+      loadEditData(spInstance, editItemId);
+    }
+  }, [editItemId]);
 
+  // Load initial data for the form
   const loadInitialData = async (sp: SPFI) => {
     try {
       const [user, currencies, isProjects, projects, expenseCategories] = await Promise.all([
@@ -49,7 +54,7 @@ const ExpenseVoucher: React.FC<IExpenseVoucherProps> = ({ context, onBack, goToM
       ]);
 
       const userDetails = await sp.web.siteUsers.getById(user.Id)();
-      const client = await context.msGraphClientFactory.getClient("3") as MSGraphClientV3;
+      const client = await context.msGraphClientFactory.getClient('3') as MSGraphClientV3;
       const profile = await client.api('/me?$select=department').get();
       const managerGraph = await client.api('/me/manager').get();
       const managerUser = await sp.web.siteUsers.getByEmail(managerGraph.mail)();
@@ -57,13 +62,33 @@ const ExpenseVoucher: React.FC<IExpenseVoucherProps> = ({ context, onBack, goToM
       setEmployeeInfo({ Id: userDetails.Id, Title: userDetails.Title });
       setDepartment(profile.department || '');
       setRmInfo({ Id: managerUser.Id, Title: managerUser.Title });
-      setCurrencyOptions(currencies.Choices || []);
-      setIsProjectRelatedOptions(isProjects.Choices || []);
-      setProjectOptions(projects);
+      setCurrencyOptions(currencies?.Choices || []);
+      setIsProjectRelatedOptions(isProjects?.Choices || []);
+      setProjectOptions(projects || []);
       setExpenseHeads(expenseCategories.map(cat => cat.Title));
     } catch (error: any) {
-      console.error("Error loading data:", error);
-      alert("Failed to load initial data.");
+      console.error('Error loading data:', error);
+      alert('Failed to load initial data.');
+    }
+  };
+
+  // Load data for the existing expense voucher when editing
+  const loadEditData = async (sp: SPFI, itemId: number) => {
+    try {
+      const item = await sp.web.lists.getByTitle('ExpenseTransaction').items.getById(itemId)();
+      
+      setSelectedCurrency(item.Currency || '');
+      setIsProjectRelated(item.IsProjectRelated || '');
+      setEmployeeComment(item.EmployeeComment || '');
+      setVoucherDate(item.Date || new Date().toISOString().substring(0, 10));
+      setExpenseItems(JSON.parse(item.ExpenseItems || '[]') || []);
+
+      if (item.IsProjectRelated === 'Yes') {
+        setSelectedProject(item.ProjectId?.toString() || '');
+      }
+    } catch (error: any) {
+      console.error('Error loading item for edit:', error);
+      alert('Failed to load item for editing.');
     }
   };
 
@@ -88,6 +113,12 @@ const ExpenseVoucher: React.FC<IExpenseVoucherProps> = ({ context, onBack, goToM
 
   const saveForm = async (status: 'Draft' | 'Pending with Manager') => {
     if (!sp) return;
+
+    if (!selectedCurrency || !isProjectRelated || expenseItems.some(i => !i.head || !i.amount)) {
+      alert('Please fill all required fields.');
+      return;
+    }
+
     setSaving(true);
     try {
       const itemPayload: any = {
@@ -100,16 +131,29 @@ const ExpenseVoucher: React.FC<IExpenseVoucherProps> = ({ context, onBack, goToM
         TotalAmount: totalAmount,
         Status: status,
         EmployeeComment: employeeComment,
-        ExpenseItems: JSON.stringify(expenseItems),
         Date: voucherDate
       };
+
+      try {
+        itemPayload.ExpenseItems = JSON.stringify(expenseItems);
+      } catch (jsonError) {
+        console.warn('Expense items not serializable', jsonError);
+        alert('Failed to save expense items.');
+        setSaving(false);
+        return;
+      }
 
       if (isProjectRelated === 'Yes' && selectedProject) {
         itemPayload.ProjectId = parseInt(selectedProject);
       }
 
-      await sp.web.lists.getByTitle('ExpenseTransaction').items.add(itemPayload);
-      alert(`Form saved as ${status}`);
+      if (editItemId) {
+        await sp.web.lists.getByTitle('ExpenseTransaction').items.getById(editItemId).update(itemPayload);
+        alert('Form updated successfully');
+      } else {
+        await sp.web.lists.getByTitle('ExpenseTransaction').items.add(itemPayload);
+        alert(`Form saved as ${status}`);
+      }
       resetForm();
     } catch (error: any) {
       alert(`Error saving form: ${error.message || error}`);
@@ -129,18 +173,16 @@ const ExpenseVoucher: React.FC<IExpenseVoucherProps> = ({ context, onBack, goToM
 
   return (
     <div className="container mt-3">
-      {/* Top Header */}
       <div className="d-flex justify-content-between align-items-center mb-4">
         <button className="btn btn-link text-primary" onClick={onBack}>
           &larr; Back
         </button>
-        <h4 className="mb-0">Expense Voucher Form</h4>
+        <h4 className="mb-0">{editItemId ? 'Edit Expense Voucher' : 'New Expense Voucher'}</h4>
         <button className="btn btn-outline-primary" onClick={goToMyRequests}>
           My Requests
         </button>
       </div>
 
-      {/* Form Starts */}
       <div className="form-group">
         <label>Employee Name</label>
         <input className="form-control" value={employeeInfo.Title} readOnly />
@@ -170,71 +212,128 @@ const ExpenseVoucher: React.FC<IExpenseVoucherProps> = ({ context, onBack, goToM
         <div className="form-group">
           <label>Project</label>
           <select className="form-control" value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)}>
-            <option value="">-- Select Project --</option>
-            {projectOptions.map(p => (
-              <option key={p.Id} value={p.Id}>{p.Title}</option>
-            ))}
-          </select>
-        </div>
-      )}
+<option value="">-- Select --</option>
+{projectOptions.map(project => (
+<option key={project.Id} value={project.Id.toString()}>
+{project.Title}
+</option>
+))}
+</select>
+</div>
+)}
+  <div className="form-group">
+    <label>Currency</label>
+    <select className="form-control" value={selectedCurrency} onChange={(e) => setSelectedCurrency(e.target.value)}>
+      <option value="">-- Select --</option>
+      {currencyOptions.map(currency => (
+        <option key={currency} value={currency}>
+          {currency}
+        </option>
+      ))}
+    </select>
+  </div>
 
-      <div className="form-group">
-        <label>Currency</label>
-        <select className="form-control" value={selectedCurrency} onChange={(e) => setSelectedCurrency(e.target.value)}>
-          <option value="">-- Select Currency --</option>
-          {currencyOptions.map(cur => (
-            <option key={cur} value={cur}>{cur}</option>
+  <div className="form-group">
+    <label>Voucher Date</label>
+    <input type="date" className="form-control" value={voucherDate} onChange={(e) => setVoucherDate(e.target.value)} />
+  </div>
+ 
+ <h5>Expense Items</h5>
+{expenseItems.map((item, index) => (
+  <div key={index} className="expense-item mb-3">
+    <div className="d-flex align-items-center">
+      {/* Expense Head */}
+      <div className="form-group mr-3">
+        <label>Expense Head</label>
+        <select
+          className="form-control"
+          value={item.head}
+          onChange={(e) => handleExpenseItemChange(index, 'head', e.target.value)}
+        >
+          <option value="">-- Select --</option>
+          {expenseHeads.map(head => (
+            <option key={head} value={head}>{head}</option>
           ))}
         </select>
       </div>
 
-      <div className="form-group">
+      {/* Description */}
+      <div className="form-group mr-3">
+        <label>Description</label>
+        <input
+          className="form-control"
+          value={item.description}
+          onChange={(e) => handleExpenseItemChange(index, 'description', e.target.value)}
+        />
+      </div>
+
+      {/* Date */}
+      <div className="form-group mr-3">
         <label>Date</label>
-        <input type="date" className="form-control" value={voucherDate} onChange={(e) => setVoucherDate(e.target.value)} />
+        <input
+          type="date"
+          className="form-control"
+          value={item.date}
+          onChange={(e) => handleExpenseItemChange(index, 'date', e.target.value)}
+        />
       </div>
 
-      <h5 className="mt-4">Expense Items</h5>
-      {expenseItems.map((item, index) => (
-        <div key={index} className="row mb-2">
-          <div className="col-md-2">
-            <select className="form-control" value={item.head} onChange={(e) => handleExpenseItemChange(index, 'head', e.target.value)}>
-              <option value="">-- Head --</option>
-              {expenseHeads.map(head => (
-                <option key={head} value={head}>{head}</option>
-              ))}
-            </select>
-          </div>
-          <div className="col-md-3">
-            <input type="text" className="form-control" placeholder="Description" value={item.description} onChange={(e) => handleExpenseItemChange(index, 'description', e.target.value)} />
-          </div>
-          <div className="col-md-2">
-            <input type="date" className="form-control" value={item.date} onChange={(e) => handleExpenseItemChange(index, 'date', e.target.value)} />
-          </div>
-          <div className="col-md-2">
-            <input type="number" className="form-control" placeholder="Amount" value={item.amount} onChange={(e) => handleExpenseItemChange(index, 'amount', e.target.value)} />
-          </div>
-          <div className="col-md-2">
-            <button className="btn btn-danger" onClick={() => removeExpenseItem(index)}>Remove</button>
-          </div>
-        </div>
-      ))}
-      <button className="btn btn-primary mb-3" onClick={addExpenseItem}>Add Expense Item</button>
+      {/* Amount */}
+      <div className="form-group mr-3">
+        <label>Amount</label>
+        <input
+          className="form-control"
+          type="number"
+          value={item.amount}
+          onChange={(e) => handleExpenseItemChange(index, 'amount', e.target.value)}
+        />
+      </div>
 
+      {/* Remove Button */}
       <div className="form-group">
-        <label>Employee Comment</label>
-        <textarea className="form-control" value={employeeComment} onChange={(e) => setEmployeeComment(e.target.value)} />
-      </div>
-
-      <div className="form-group">
-        <strong>Total Amount: </strong>{totalAmount.toFixed(2)}
-      </div>
-
-      <div className="mt-3 mb-5">
-        <button className="btn btn-success mr-2" disabled={saving} onClick={() => saveForm('Draft')}>Save as Draft</button>
-        <button className="btn btn-primary" disabled={saving} onClick={() => saveForm('Pending with Manager')}>Submit</button>
+        <label>&nbsp;</label>
+        <button
+          type="button"
+          className="btn btn-danger"
+          onClick={() => removeExpenseItem(index)}
+        >
+          Remove
+        </button>
       </div>
     </div>
-  );
+  </div>
+))}
+
+  <button type="button" className="btn btn-primary mt-2" onClick={addExpenseItem}>
+    Add Expense Item
+  </button>
+
+  <div className="form-group mt-3">
+    <label>Total Amount</label>
+    <input className="form-control" value={totalAmount} readOnly />
+  </div>
+  <div className="form-group">
+    <label>Employee Comments</label>
+    <textarea className="form-control" rows={3} value={employeeComment} onChange={(e) => setEmployeeComment(e.target.value)} />
+  </div>
+  <div className="text-center mt-4">
+    <button
+      className="btn btn-primary"
+      onClick={() => saveForm('Draft')}
+      disabled={saving}
+    >
+      {saving ? 'Saving...' : 'Save as Draft'}
+    </button>
+    <button
+      className="btn btn-success ml-2"
+      onClick={() => saveForm('Pending with Manager')}
+      disabled={saving}
+    >
+      {saving ? 'Saving...' : 'Submit for Approval'}
+    </button>
+  </div>
+</div>
+);
 };
 
-export default ExpenseVoucher;
+export default EmployeeForm;

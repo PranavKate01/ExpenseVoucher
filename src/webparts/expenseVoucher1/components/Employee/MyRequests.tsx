@@ -1,61 +1,74 @@
 import * as React from 'react';
 import { useEffect, useState } from 'react';
-import ExpenseVoucherWebPart from '../../ExpenseVoucher1WebPart';
+import { SPFI } from '@pnp/sp';
+import "@pnp/sp/webs";
+import "@pnp/sp/items";
+import "@pnp/sp/site-users";
 
-interface MyRequestsProps {
-  context: any;
-  onBack: () => void;
+interface IRequestItem {
+  Id: number;
+  Department?: string;
+  Date: string;
+  IsProjectRelated?: boolean;
+  Currency: string;
+  TotalAmount: number;
+  Status: string;
+  EmployeeComment?: string;
+  ManagerComment?: string;
+  AccountComment?: string;
+  Project?: { Title: string };
 }
 
-const MyRequests: React.FC<MyRequestsProps> = ({ context, onBack }) => {
-  const [requests, setRequests] = useState<any[]>([]);
-  const [filteredRequests, setFilteredRequests] = useState<any[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [selectedStatus, setSelectedStatus] = useState<string>('All');
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
+interface MyRequestsProps {
+  sp: SPFI;
+  onBack: () => void;
+  onEdit: (itemId: number) => void;
+}
+
+const MyRequests: React.FC<MyRequestsProps> = ({ sp, onBack, onEdit }) => {
+  const [requests, setRequests] = useState<IRequestItem[]>([]);
+  const [filteredRequests, setFilteredRequests] = useState<IRequestItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedStatus, setSelectedStatus] = useState('All');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   useEffect(() => {
-    const fetchRequests = async () => {
-      try {
-        const sp = ExpenseVoucherWebPart.sp;
-        const currentUser = await sp.web.currentUser();
-        const userTitle = currentUser.Title;
-
-        const items = await sp.web.lists
-          .getByTitle("ExpenseTransaction")
-          .items
-          .select(
-            "Id",
-            "Department",
-            "Date",
-            "IsProjectRelated",
-            "Currency",
-            "TotalAmount",
-            "Status",
-            "EmployeeComment",
-            "ManagerComment",
-            "AccountComment",
-            "EmployeeName/Title",
-            "Project/Title",
-            "RmName/Title"
-          )
-          .expand("EmployeeName", "Project", "RmName")
-          .filter(`EmployeeName/Title eq '${userTitle}'`)
-          ();
-
-        setRequests(items);
-        setFilteredRequests(items);
-      } catch (error) {
-        console.error("Error fetching requests:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchRequests();
   }, []);
+
+  const fetchRequests = async () => {
+    try {
+      const currentUser = await sp.web.currentUser();
+      const userTitle = currentUser.Title;
+
+      const items = await sp.web.lists.getByTitle("ExpenseTransaction").items
+        .select(
+          "Id",
+          "Department",
+          "Date",
+          "Currency",
+          "TotalAmount",
+          "Status",
+          "EmployeeComment",
+          "ManagerComment",
+          "AccountComment",
+          "EmployeeName/Title",
+          "Project/Title"
+        )
+        .expand("EmployeeName", "Project")
+        .filter(`EmployeeName/Title eq '${userTitle}'`)
+        ();
+
+      setRequests(items);
+      setFilteredRequests(items);
+    } catch (err) {
+      console.error("Error fetching requests:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     let filtered = [...requests];
@@ -89,6 +102,7 @@ const MyRequests: React.FC<MyRequestsProps> = ({ context, onBack }) => {
       case 'Pending with Account': return { color: 'blue', fontWeight: 600 };
       case 'Rejected': return { color: 'red', fontWeight: 600 };
       case 'Recycle': return { color: 'gray', fontWeight: 600 };
+      case 'Draft': return { color: '#888', fontWeight: 600 };
       default: return {};
     }
   };
@@ -141,9 +155,9 @@ const MyRequests: React.FC<MyRequestsProps> = ({ context, onBack }) => {
               <th style={thStyle}>Total Amount</th>
               <th style={thStyle}>Status</th>
               <th style={thStyle}>Employee Comment</th>
-              {/* Conditionally Render Manager and Account Comment Columns */}
               {['Pending with Account', 'Recycle', 'Rejected'].includes(selectedStatus) && <th style={thStyle}>Manager Comment</th>}
               {['Pending with Manager', 'Recycle', 'Rejected'].includes(selectedStatus) && <th style={thStyle}>Account Comment</th>}
+              <th style={thStyle}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -156,10 +170,13 @@ const MyRequests: React.FC<MyRequestsProps> = ({ context, onBack }) => {
                 <td style={tdStyle}>{item.TotalAmount}</td>
                 <td style={{ ...tdStyle, ...getStatusStyle(item.Status) }}>{item.Status}</td>
                 <td style={tdStyle}>{item.EmployeeComment}</td>
-
-                {/* Conditionally Render Comments Based on Status */}
                 {['Pending with Account', 'Recycle', 'Rejected'].includes(item.Status) && <td style={tdStyle}>{item.ManagerComment}</td>}
                 {['Pending with Manager', 'Recycle', 'Rejected'].includes(item.Status) && <td style={tdStyle}>{item.AccountComment}</td>}
+                <td style={tdStyle}>
+                  {item.Status === 'Draft' && (
+                    <button style={editButtonStyle} onClick={() => onEdit(item.Id)}>Edit</button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -169,7 +186,7 @@ const MyRequests: React.FC<MyRequestsProps> = ({ context, onBack }) => {
   );
 };
 
-// ✅ Styling
+// Styling
 const containerStyle: React.CSSProperties = {
   padding: 20,
   fontFamily: 'Segoe UI, sans-serif',
@@ -239,6 +256,15 @@ const thStyle: React.CSSProperties = {
 const tdStyle: React.CSSProperties = {
   padding: '10px',
   borderBottom: '1px solid #f0f0f0',
+};
+
+const editButtonStyle: React.CSSProperties = {
+  backgroundColor: '#0078d4',
+  color: 'white',
+  border: 'none',
+  borderRadius: 4,
+  padding: '6px 10px',
+  cursor: 'pointer',
 };
 
 export default MyRequests;
