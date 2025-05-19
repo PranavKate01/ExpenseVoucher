@@ -138,7 +138,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ onBack, context }) 
                     <td>{new Date(req.Date).toLocaleDateString()}</td>
                     <td>{req.Currency || "₹"} {req.TotalAmount.toFixed(2)}</td>
                     <td>
-                      <button className="btn btn-sm btn-outline-primary" onClick={() => setSelectedRequest(req)}>
+                      <button className="btn btn-sm btn-outline-primary" onClick={() => setSelectedRequest(req)} aria-label={`View details of request from ${req.EmployeeName?.Title}`}>
                         <i className="bi bi-eye-fill"></i>
                       </button>
                     </td>
@@ -153,12 +153,22 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ onBack, context }) 
       )}
 
       {selectedRequest && (
-        <div className="modal d-block" tabIndex={-1} role="dialog" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
-          <div className="modal-dialog modal-lg" role="document">
+        <div
+          className="modal d-block"
+          tabIndex={-1}
+          role="dialog"
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+          aria-modal="true"
+          aria-labelledby="requestDetailsTitle"
+        >
+          <div
+            className="modal-dialog modal-dialog-centered modal-fullscreen-sm-down modal-lg"
+            role="document"
+          >
             <div className="modal-content shadow-lg">
               <div className="modal-header">
-                <h5 className="modal-title">Request Details</h5>
-                <button type="button" className="btn-close" onClick={() => setSelectedRequest(null)}></button>
+                <h5 className="modal-title" id="requestDetailsTitle">Request Details</h5>
+                <button type="button" className="btn-close" onClick={() => setSelectedRequest(null)} aria-label="Close"></button>
               </div>
               <div className="modal-body">
                 <p><strong>Employee:</strong> {selectedRequest.EmployeeName?.Title}</p>
@@ -173,7 +183,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ onBack, context }) 
 
                 <div className="mt-3">
                   <strong>Expense Items:</strong>
-                  <div className="table-responsive mt-2">
+                  <div className="table-responsive mt-2" style={{ maxHeight: "250px", overflowY: "auto" }}>
                     <table className="table table-bordered table-sm">
                       <thead className="table-light">
                         <tr>
@@ -215,20 +225,21 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ onBack, context }) 
                     value={managerComment}
                     onChange={(e) => setManagerComment(e.target.value)}
                     placeholder="Write your comment here..."
+                    rows={3}
                   />
                 </div>
               </div>
-              <div className="modal-footer">
-                <button className="btn btn-success" onClick={() => handleAction("Approve")}>
+              <div className="modal-footer flex-wrap gap-2">
+                <button className="btn btn-success flex-grow-1" onClick={() => handleAction("Approve")}>
                   <i className="bi bi-check-circle me-1"></i>Approve
                 </button>
-                <button className="btn btn-warning" onClick={() => handleAction("Recycle")}>
+                <button className="btn btn-warning flex-grow-1" onClick={() => handleAction("Recycle")}>
                   <i className="bi bi-arrow-repeat me-1"></i>Recycle
                 </button>
-                <button className="btn btn-danger" onClick={() => handleAction("Reject")}>
+                <button className="btn btn-danger flex-grow-1" onClick={() => handleAction("Reject")}>
                   <i className="bi bi-x-circle me-1"></i>Reject
                 </button>
-                <button className="btn btn-outline-secondary" onClick={() => setSelectedRequest(null)}>
+                <button className="btn btn-outline-secondary flex-grow-1" onClick={() => setSelectedRequest(null)}>
                   Cancel
                 </button>
               </div>
@@ -237,7 +248,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ onBack, context }) 
         </div>
       )}
 
-      <div className="mt-4">
+      <div className="mt-4 text-center text-sm-start">
         <button className="btn btn-outline-secondary" onClick={onBack}>
           <i className="bi bi-arrow-left-circle me-2"></i>Back to Home
         </button>
