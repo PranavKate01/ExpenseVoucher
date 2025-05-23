@@ -224,15 +224,7 @@ const EmployeeForm: React.FC<IExpenseVoucherProps> = ({
         </div>
       </div>
 
-      <div className="row gx-3 gy-3
-
-
-
-
-
-
-ChatGPT said:
-mt-3">
+      <div className="row gx-3 gy-3mt-3">
 <div className="col-12 col-md-4">
 <label className="form-label">Date</label>
 <input
