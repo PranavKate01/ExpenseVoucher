@@ -55,7 +55,8 @@ const MyRequests: React.FC<MyRequestsProps> = ({ sp, onBack, onEdit }) => {
           "Project/Title"
         )
         .expand("EmployeeName", "Project")
-        .filter(`EmployeeName/Title eq '${userTitle}'`)();
+        .filter(`EmployeeName/Title eq '${userTitle}'`)
+        .orderBy("Id", false) ();
 
       setRequests(items);
     } catch (err) {

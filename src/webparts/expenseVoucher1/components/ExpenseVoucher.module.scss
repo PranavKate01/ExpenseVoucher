@@ -1,79 +1,15 @@
-.container {
+
+
+.expenseVoucher {
   padding: 20px;
-  font-family: 'Segoe UI', sans-serif;
 }
 
-.header {
-  background-color: #e0f3ff;
-  padding: 10px 15px;
-  display: flex;
-  align-items: center;
-  border-radius: 6px;
+h1, h2 {
+  text-align: center;
   margin-bottom: 20px;
-  border: 1px solid #c0e2ff;
 }
 
-.title {
-  font-size: 20px;
-  font-weight: 600;
-  color: #0078d4;
-}
-
-.filter-bar {
-  margin-bottom: 15px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.table {
+button {
+  margin-top: 10px;
   width: 100%;
-  border-collapse: collapse;
-}
-
-.table th, .table td {
-  padding: 10px;
-  border-bottom: 1px solid #ccc;
-  text-align: left;
-}
-
-.edit-btn {
-  background-color: transparent;
-  border: none;
-  cursor: pointer;
-  color: #0078d4;
-  font-size: 18px;
-}
-
-/* Responsive behavior */
-@media screen and (max-width: 768px) {
-  .filter-bar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .table thead {
-    display: none;
-  }
-
-  .table tr {
-    display: block;
-    margin-bottom: 15px;
-  }
-
-  .table td {
-    display: block;
-    text-align: right;
-    padding-left: 50%;
-    position: relative;
-  }
-
-  .table td::before {
-    content: attr(data-label);
-    position: absolute;
-    left: 10px;
-    font-weight: bold;
-    text-align: left;
-  }
 }

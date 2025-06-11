@@ -1,4 +1,4 @@
-import * as React from 'react';
+/*import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { SPFI, spfi } from '@pnp/sp';
 import { SPFx } from '@pnp/sp/presets/all';
@@ -227,3 +227,137 @@ const ExpenseVoucher: React.FC<IExpenseVoucherProps> = ({ context }) => {
 };
 
 export default ExpenseVoucher;
+*/
+ 'use client';
+import React, { useState } from 'react';
+import Tesseract from 'tesseract.js';
+
+const ReceiptScanner = () => {
+  const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [amount, setAmount] = useState('');
+  const [formattedDate, setFormattedDate] = useState('');
+
+  const extractAmount = (text: string): string => {
+    const lines = text.split('\n').map(line => line.trim().toLowerCase());
+    const amountRegex = /\b\d{1,3}(?:[,\s]?\d{3})*(?:\.\d{2})\b/g;
+    const keywords = ['total', 'amount', 'paid', 'net', 'bill'];
+    const candidates: { value: number; weight: number }[] = [];
+
+    for (const line of lines) {
+      const matches = line.match(amountRegex);
+      if (matches) {
+        for (const raw of matches) {
+          if (/\d\s+\d/.test(raw)) continue;
+          const cleaned = raw.replace(/[, ]/g, '');
+          const num = parseFloat(cleaned);
+          if (!isNaN(num) && num >= 1 && num <= 50000) {
+            const weight = keywords.some(k => line.includes(k)) ? 10 : 1;
+            candidates.push({ value: num, weight });
+          }
+        }
+      }
+    }
+
+    if (candidates.length === 0) return '';
+    candidates.sort((a, b) => b.weight - a.weight || b.value - a.value);
+    return candidates[0].value.toFixed(2);
+  };
+
+  const extractDate = (text: string): string => {
+    text = text.replace(/\bhug\b/gi, 'Aug'); // OCR correction
+
+    const patterns = [
+      /\b\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}\b/g,
+      /\b\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}\b/g,
+      /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}(?:,\s*|\s+)?\d{2,4}\b/gi,
+    ];
+
+    for (const regex of patterns) {
+      const match = text.match(regex);
+      if (match?.length) {
+        const rawDate = match[0].replace(/,/g, '').trim();
+        const parsed = new Date(rawDate);
+        if (!isNaN(parsed.getTime())) {
+          const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+          const dd = String(parsed.getDate()).padStart(2, '0');
+          const yy = String(parsed.getFullYear()).slice(-2);
+          return `${mm}/${dd}/${yy}`;
+        }
+      }
+    }
+
+    return 'Not Found';
+  };
+
+  const extractTextFromImage = async (imageBase64: string): Promise<string> => {
+    try {
+      const {
+        data: { text },
+      } = await Tesseract.recognize(imageBase64, 'eng');
+      return text;
+    } catch (error) {
+      console.error('OCR Error:', error);
+      return '';
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const imageBase64 = reader.result as string;
+      setImageSrc(imageBase64);
+
+      const text = await extractTextFromImage(imageBase64);
+      const amt = extractAmount(text);
+      const date = extractDate(text);
+
+      setAmount(amt || 'Not Found');
+      setFormattedDate(date);
+    };
+
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div style={{ maxWidth: '400px', margin: 'auto' }}>
+      <h2>Upload Receipt</h2>
+
+      <input
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: 'none' }}
+        id="uploadInput"
+        onChange={handleImageUpload}
+      />
+
+      <button
+        onClick={() => document.getElementById('uploadInput')?.click()}
+        style={{
+          padding: '10px 20px',
+          backgroundColor: '#007bff',
+          color: 'white',
+          border: 'none',
+          borderRadius: '5px',
+          cursor: 'pointer',
+          marginBottom: '20px'
+        }}
+      >
+        📁 Upload from Device
+      </button>
+
+      {imageSrc && (
+        <>
+          <img src={imageSrc} alt="Uploaded Receipt" style={{ width: '100%', marginBottom: '10px' }} />
+          <p><strong>💰 Amount:</strong> {amount}</p>
+          <p><strong>📅 Date:</strong> {formattedDate}</p>
+        </>
+      )}
+    </div>
+  );
+};
+
+export default ReceiptScanner;

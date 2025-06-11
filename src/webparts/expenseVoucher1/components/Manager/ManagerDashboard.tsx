@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useEffect, useState, useCallback } from 'react';
 import { spfi, SPFx } from '@pnp/sp';
 import "@pnp/sp/items";
+import "@pnp/sp/attachments";
 import "@pnp/sp/lists";
 import "@pnp/sp/webs";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
@@ -25,6 +26,7 @@ interface RequestItem {
   Currency?: string;
   EmployeeComment?: string;
   ExpenseItems?: string;
+  Attachments?: { FileName: string; ServerRelativeUrl: string }[];
 }
 
 const STATUS_MAP = {
@@ -62,7 +64,8 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ onBack, context }) 
           "EmployeeComment",
           "ExpenseItems"
         )
-        .expand("EmployeeName", "RmName", "Project")();
+        .expand("EmployeeName", "RmName", "Project")
+        .orderBy("Id", false)();
 
       const filtered = items.filter(item =>
         item?.RmName?.EMail?.toLowerCase() === currentUserEmail &&
@@ -80,6 +83,24 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ onBack, context }) 
   useEffect(() => {
     fetchRequests();
   }, [fetchRequests]);
+
+  const fetchAttachments = async (itemId: number) => {
+    try {
+      const files = await sp.web.lists.getByTitle("ExpenseTransaction").items.getById(itemId).attachmentFiles();
+      return files.map(file => ({
+        FileName: file.FileName,
+        ServerRelativeUrl: file.ServerRelativeUrl
+      }));
+    } catch (error) {
+      console.error(`Error fetching attachments for item ${itemId}:`, error);
+      return [];
+    }
+  };
+
+  const handleViewDetails = async (req: RequestItem) => {
+    const attachments = await fetchAttachments(req.Id);
+    setSelectedRequest({ ...req, Attachments: attachments });
+  };
 
   const handleAction = async (action: keyof typeof STATUS_MAP) => {
     if (!selectedRequest) return;
@@ -138,7 +159,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ onBack, context }) 
                     <td>{new Date(req.Date).toLocaleDateString()}</td>
                     <td>{req.Currency || "₹"} {req.TotalAmount.toFixed(2)}</td>
                     <td>
-                      <button className="btn btn-sm btn-outline-primary" onClick={() => setSelectedRequest(req)} aria-label={`View details of request from ${req.EmployeeName?.Title}`}>
+                      <button className="btn btn-sm btn-outline-primary" onClick={() => handleViewDetails(req)}>
                         <i className="bi bi-eye-fill"></i>
                       </button>
                     </td>
@@ -153,22 +174,12 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ onBack, context }) 
       )}
 
       {selectedRequest && (
-        <div
-          className="modal d-block"
-          tabIndex={-1}
-          role="dialog"
-          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-          aria-modal="true"
-          aria-labelledby="requestDetailsTitle"
-        >
-          <div
-            className="modal-dialog modal-dialog-centered modal-fullscreen-sm-down modal-lg"
-            role="document"
-          >
+        <div className="modal d-block" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <div className="modal-dialog modal-dialog-centered modal-lg">
             <div className="modal-content shadow-lg">
               <div className="modal-header">
-                <h5 className="modal-title" id="requestDetailsTitle">Request Details</h5>
-                <button type="button" className="btn-close" onClick={() => setSelectedRequest(null)} aria-label="Close"></button>
+                <h5 className="modal-title">Request Details</h5>
+                <button type="button" className="btn-close" onClick={() => setSelectedRequest(null)}></button>
               </div>
               <div className="modal-body">
                 <p><strong>Employee:</strong> {selectedRequest.EmployeeName?.Title}</p>
@@ -218,7 +229,25 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ onBack, context }) 
                   </div>
                 </div>
 
-                <div className="mb-3 mt-3">
+                <div className="mt-4">
+                  <strong>Attachments:</strong>
+                  <ul className="list-group mt-2">
+                    {selectedRequest.Attachments && selectedRequest.Attachments.length > 0 ? (
+                      selectedRequest.Attachments.map((file, idx) => (
+                        <li key={idx} className="list-group-item d-flex justify-content-between align-items-center">
+                          <a href={file.ServerRelativeUrl} target="_blank" rel="noopener noreferrer">
+                            {file.FileName}
+                          </a>
+                          <i className="bi bi-box-arrow-up-right"></i>
+                        </li>
+                      ))
+                    ) : (
+                      <li className="list-group-item text-muted">No attachments found.</li>
+                    )}
+                  </ul>
+                </div>
+
+                <div className="mb-3 mt-4">
                   <label className="form-label fw-semibold">Manager Comment:</label>
                   <textarea
                     className="form-control"
